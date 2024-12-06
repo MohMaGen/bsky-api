@@ -1,3 +1,38 @@
+/*
+ * ============================================================================
+ *                                   bsky-ap.h
+ *                  BlueSky client API single header c library.
+ *
+ *               _         _                            _   _     
+ *              | |__  ___| | ___   _        __ _ _ __ (_) | |__  
+ *              | '_ \/ __| |/ / | | |_____ / _` | '_ \| | | '_ \ 
+ *              | |_) \__ \   <| |_| |_____| (_| | |_) | |_| | | |
+ *              |_.__/|___/_|\_\\__, |      \__,_| .__/|_(_)_| |_|
+ *                              |___/            |_|              
+ *
+ * 
+ * This is classic single header c library.
+ * To use just include this header and predefine `BSKY_API_IMPLEMENTATION'
+ * macro. Like this:
+ *     > #define  BSKY_API_IMPLEMENTATION
+ *     > #include "bsky-api.h"
+ *
+ * 
+ * This library use `bsky_' for all functions, macroses, types, a.t.c. To not
+ * mess your namespace. But also this library allows you to strip (remove)
+ * prefix from all this names. To do id predefine `BSKY_API_STRIP_PREFIX'
+ * macro. Like this;
+ *     > #define  BSKY_API_IMPLEMENTATION
+ *     > #define  BSKY_API_STRIP_PREFIX
+ *     > #include "bsky-api.h"
+ * 
+ *  
+ *                                              by Mokhov Mark
+ *                                              (bluesky: mohmagen.bsky.social)
+ * ============================================================================
+ */
+
+
 #ifndef __BSKY_API_H_GUARD__
 #define __BSKY_API_H_GUARD__
 #include <stddef.h>
@@ -65,7 +100,7 @@
 
 
     /**
-     * Log formatted message using BSKY_LOGGER, unless logger lesser than
+     * Log formatted message using BSKY_LOGGER, unless level lesser than
      * `BSKY_LOG_LEVELE'
      */
     #define bsky_log(level, fmt, ...) if (level <= BSKY_LOG_LEVEL) {\
@@ -114,7 +149,7 @@
      *      #define BSKY_API_IMPLEMENTATION
      *      #include <bsky-api.h>
      * 
-     * You can change default tmp arena size by predifining
+     * You can change default tmp arena size by predefining
      * `BSKY_DEFAULT_TMP_ARENA_CAPACITY'.
      *
      * The default arena return NULL, when it's overflow, so
@@ -262,7 +297,8 @@
     struct bsky_str_builder { char *data; size_t len, cap; };
 
     /**
-     * Null terminated string. The pointer points to '\0' char.
+     * Null terminated string. The end pointer points to '\0' char, so the
+     * length of the string (without null char) equal to end - start;
      */
     struct bsky_str         { char *start; char *end; };
 
@@ -381,7 +417,7 @@
         };
     };
 
-	// pair to implement dictionaries.
+    // pair to implement dictionaries.
     struct bsky_json_pair {
         char *name; struct bsky_json value;
     };
@@ -397,7 +433,7 @@
      */
     void bsky_sb_push_json(struct bsky_str_builder *, struct bsky_json);
 
-	/**
+    /**
      * Parse JSON data.
      */
     enum bsky_error_code bsky_json_of_str(struct bsky_str, struct bsky_json *);
@@ -410,7 +446,7 @@
 
 #ifdef BSKY_API_IMPLEMENTATION
 
-	/*
+    /*
      * BSKY ERROR CODE
      */
     const char *bsky_str_of_error_code(enum bsky_error_code code)
@@ -421,7 +457,7 @@
         }
     }
 
-	/*
+    /*
      * DEFAULT TMP ARENA
      */
     struct __bsky_default_tmp_arena {
