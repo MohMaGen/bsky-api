@@ -123,7 +123,7 @@
      * To reset default tmp arena call:
      * bsky_default_tmp_reset();
      *
-     * NOTE: if `bsky_tmp_alloc' returns NULL, it will interpreted as
+     * NOTE: if `bsky_tmp_alloc' returns NULL, it will be interpreted as
      *       temporary arena overflow.
      */
     #ifndef bsky_tmp_alloc
