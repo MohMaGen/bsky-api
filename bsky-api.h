@@ -39,11 +39,11 @@
      */
     #ifndef BSKY_LOGGER
         #ifndef BSKY_SIMPLE_LOGGER
-            #define BSKY_SIMPLE_LOGGER(fmt, __VA_ARGS__)                 \
+            #define BSKY_SIMPLE_LOGGER(fmt, ...)                 \
                                        printf(fmt, __VA_ARGS__)
         #endif
 
-        #define BSKY_LOGGER(level, fmt, __VA_ARGS__) do {                \
+        #define BSKY_LOGGER(level, fmt, ...) do {                \
                     switch (level) {                                     \
                     case bsky_log_None: break;                           \
                     case bsky_log_Error:                                 \
@@ -68,7 +68,7 @@
      * Log formatted message using BSKY_LOGGER, unless logger lesser than
      * `BSKY_LOG_LEVELE'
      */
-    #define bsky_log(level, fmt, __VA_ARGS__) if (level <= BSKY_LOG_LEVEL) {\
+    #define bsky_log(level, fmt, ...) if (level <= BSKY_LOG_LEVEL) {\
             BSKY_LOGGER(level, fmt, __VA_ARGS__);                           \
         }                                                                   \
 
@@ -88,8 +88,9 @@
      */
 	const char *bsky_str_of_error_code(enum bsky_error_code);
 
-    #define bsky_log_error(ec) bsky_log(bsky_log_Error, "%s",  \
-                                bsky_str_of_error_code(ec));   \
+    #define bsky_log_error(ec) bsky_log(bsky_log_Error,        \
+                    "%s. %s:%d", bsky_str_of_error_code(ec),   \
+                    __FILE__, __LINE__);                       \
 
     #define bsky_return_error(ec) if (ec != bsky_log_Error) {  \
                             bsky_log_error(ec);                \
@@ -302,6 +303,46 @@
      */
     struct bsky_view bsky_view_of_str(struct bsky_str);
 
+    /**
+     * Left trim string. This function donot copy
+     * string it's just create subview of the original string.
+     */
+    struct bsky_str bsky_trim_left(struct bsky_str);
+
+    /**
+     * Check if string starts with other string.
+     * Retrun 1 if string starts with prefix and 0 otherwise.
+     */
+    int bsky_str_starts_with(struct bsky_str, struct bsky_str);
+
+    /**
+     * Check if string ends with other string.
+     * Retrun 1 if string ends with prefix and 0 otherwise.
+     */
+    int bsky_str_ends_with(struct bsky_str, struct bsky_str);
+
+    /**
+     * Check if two strings equal to each other.
+     * Return 1 if strings are equal and 0 otherwise.
+     */
+    int bsky_str_eq(struct bsky_str, struct bsky_str);
+
+    /**
+     * Compare two strings.
+     * 
+     * Return 0 if strings are equal.
+     * Return 1+idx if first string bigger than second.
+     * Return -1-idx if secodn string bigger than first.
+     *
+     * idx -- idx of first different character of strings.
+     */
+    int bsky_str_cmp(struct bsky_str, struct bsky_str);
+
+    /**
+     * Return length of the string.
+     */
+    size_t bsky_str_len(struct bsky_str);
+
 
 
 /*
@@ -314,15 +355,23 @@
 	// Just forward declaration :)
     struct bsky_json_pair;
 
+    /**
+     * `bsky_json' is data structure to represent json format, parse, and
+     * serialize it. It can be static created.
+     *
+     * By default `bsky_json' is not dynamic data structure, cause in primary
+     * use cases it should just serve as help format to create JSON strings or
+     * read data from JSON format.
+     */
     struct bsky_json {
         enum {
-            bsky_json_Arr,
-            bsky_json_Dct,
+            bsky_json_Arr,  // JSON Array
+            bsky_json_Dct,  // JSON Dictionary
 
-            bsky_json_Num,
-            bsky_json_Str,
-            bsky_json_Bool,
-            bsky_json_Null,
+            bsky_json_Num,  // JSON Number
+            bsky_json_Str,  // JSON String
+            bsky_json_Bool, // JSON Boolean
+            bsky_json_Null, // JSON NULL
         } var;
 
         union {
@@ -332,12 +381,26 @@
         };
     };
 
+	// pair to implement dictionaries.
     struct bsky_json_pair {
         char *name; struct bsky_json value;
     };
 
+    /**
+     * Create temporary string of json. The resulting string would be in
+     * compressed format.
+     */
     struct bsky_str bsky_tmp_str_of_json(struct bsky_json);
+
+    /**
+     * Push JSON string to string builder.
+     */
     void bsky_sb_push_json(struct bsky_str_builder *, struct bsky_json);
+
+	/**
+     * Parse JSON data.
+     */
+    enum bsky_error_code bsky_json_of_str(struct bsky_str, struct bsky_json *);
 
     typedef struct bsky_json      bsky_Json;
     typedef struct bsky_json_pair bsky_Json_Pair;
@@ -527,6 +590,59 @@
         return (struct bsky_view) { str.start, str.end + 1 };
     }
 
+    static int __s_is_whitespace(char c) {
+        return c == ' ' || c == '\n' || c == '\t';
+    }
+
+    struct bsky_str bsky_trim_left(struct bsky_str str)
+    {
+        while (str.start != str.end && __s_is_whitespace(*str.start)) {
+            str.start++;
+        }
+
+        return str;
+    }
+
+    int bsky_str_starts_with(struct bsky_str fst, struct bsky_str pref)
+    {
+        size_t fst_len = bsky_str_len(fst), pref_len = bsky_str_len(pref);
+
+        if (fst_len < pref_len) return 0;
+
+        return memcmp(fst.start, pref.start, pref_len) == 0;
+    }
+
+    int bsky_str_ends_with(struct bsky_str fst, struct bsky_str post)
+    {
+        size_t fst_len = bsky_str_len(fst), post_len = bsky_str_len(post);
+
+        if (fst_len < post_len) return 0;
+
+        return memcmp(fst.start + fst_len - post_len,
+                      post.start, post_len) == 0;
+    }
+
+    size_t bsky_str_len(struct bsky_str str) {
+        return (str.end - str.start) / sizeof (char);
+    }
+
+    int bsky_str_eq(struct bsky_str fst, struct bsky_str snd) {
+        return strcmp(fst.start, snd.start) == 0;
+    }
+
+    int bsky_str_cmp(struct bsky_str fst, struct bsky_str snd) {
+        size_t fst_len = bsky_str_len(fst), snd_len = bsky_str_len(snd);
+
+        for (int i = 0; i < (fst_len > snd_len ? fst_len : snd_len); ++i) {
+            if (fst.start[i] > snd.start[i]) return  1 + i;
+            if (fst.start[i] < snd.start[i]) return -1 - i;
+        }
+
+        return fst_len > snd_len ?   1 + snd_len :
+               snd_len > fst_len ? - 1 - fst_len :
+               0;
+    }
+
 
     /*
      * BSKY JSON
@@ -579,6 +695,13 @@
 
         return bsky_sb_build_tmp(&sb);
     }
+
+    enum bsky_error_code
+    bsky_json_of_str(struct bsky_str str, struct bsky_json *result)
+    {
+		return bsky_ec_Ok;
+    }
+
 
 #endif
 
