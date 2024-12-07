@@ -379,6 +379,11 @@
      */
     size_t bsky_str_len(struct bsky_str);
 
+    /**
+     * Shift string view.
+     */
+    struct bsky_str bksy_shift_str(struct bksy_str, size_t n);
+
 
 
 /*
@@ -443,7 +448,13 @@
 
 
 
-
+/*
+ * ============================================================================
+ *                             IMPLEMENTATION
+ * ===========================================================================
+ *
+ * To enable implementation predefine `BSKY_API_IMPLEMENTATION' macro.
+ */
 #ifdef BSKY_API_IMPLEMENTATION
 
     /*
@@ -679,6 +690,14 @@
                0;
     }
 
+    struct bsky_str bksy_shift_str(struct bksy_str str, size_t n)
+    {
+        if (n > bsky_str_len(str)) {
+            return (struct bsky_str){str.end, str.end};
+        }
+
+        return struct bsky_str){str.start + n, str.end};
+    }
 
     /*
      * BSKY JSON
@@ -732,10 +751,57 @@
         return bsky_sb_build_tmp(&sb);
     }
 
+    struct bsky_json
+    bsky_try_parse_json(struct bsky_str data, char **endptr,
+                    enum bsky_error_code* ec)
+    {
+        char *inner_endptr = NULL;
+
+        *endptr = data.start;
+
+        data = bsky_trim_left(data);
+
+        struct sbky_json json = { 0 };
+
+        if (data.start[0] == '[') {
+            *endptr = data.start;
+            json.var = bsky_json_Arr;
+
+            do {
+                data = bksy_shift_str(data, 1);
+                struct bsky_json
+                       elem = bsky_try_parse_json(data, &inner_endptr, ec);
+
+                if (ec != bsky_ec_Ok) {
+                    return 
+                }
+            }
+        }
+    }
+
+    struct bsky_json
+    bsky_parse_json(struct bsky_str data, char **endptr,
+                    enum bsky_error_code* ec)
+    {
+        enum bsky_error_code ec;
+        return bsky_try_parse_json(data, endptr, &ec);
+    }
+
     enum bsky_error_code
     bsky_json_of_str(struct bsky_str str, struct bsky_json *result)
     {
-		return bsky_ec_Ok;
+        struct bsky_json json = { 0 };
+
+        str = bsky_trim_left(str);
+
+        if (*str.start == '[') {
+            while (1) {
+
+            }
+        }
+
+        *result = json;
+        return bsky_ec_Ok;
     }
 
 
