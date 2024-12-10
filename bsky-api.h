@@ -33,7 +33,7 @@
  */
 
 
-#ifndef __BSKY_API_H_GUARD__ic_arr*)da)->data
+#ifndef __BSKY_API_H_GUARD__
 #define __BSKY_API_H_GUARD__
 #include <stddef.h>
 #include <stdlib.h>
@@ -60,7 +60,6 @@
     #define BSKY_LOG_LEVEL bsky_log_Info
     #endif
 
-ic_arr*)da)->data
     /**
      * Logger function used by `bsky_log'. Logger must sutisfy following
      * usage:
@@ -667,7 +666,7 @@ ic_arr*)da)->data
         const char nullc = '\0';
 
         if (sb->len == 0) {
-            char buf[] = { c, nullc };ic_arr*)da)->data
+            char buf[] = { c, nullc };
             __bsky_da_append(sb, buf, sizeof(buf), 2);
         }
         else {
@@ -779,12 +778,10 @@ ic_arr*)da)->data
     }
 
 
-    struct bsky_str bsky_shift_str(struct bsky_str str, size_t n)
-
+    struct bsky_str bsky_shift_str(struct bsky_str str, size_t n) {
         if (n > bsky_str_len(str)) {
             return (struct bsky_str){str.end, str.end};
         }
-
 
         return (struct bsky_str) {str.start + n, str.end};
     }
@@ -793,7 +790,7 @@ ic_arr*)da)->data
         return (struct bsky_str) { str, str + strlen(str) };
     }
 
-ic_arr*)da)->data    /*
+    /*
      * BSKY JSON
      */
     void bsky_sb_push_json(struct bsky_str_builder *sb, struct bsky_json json)
@@ -1120,7 +1117,5 @@ ic_arr*)da)->data    /*
     #define __tmp_view_of_da(da, elem_size) __bsky_tmp_view_of_da(da,elem_size)
     #define tmp_view_of_da(da) bsky_tmp_view_of_da(da)
 #endif
-
-
 
 #endif //GUARD
