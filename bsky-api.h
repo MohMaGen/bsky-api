@@ -60,7 +60,6 @@
     #define BSKY_LOG_LEVEL bsky_log_Info
     #endif
 
-ic_arr*)da)->data
     /**
      * Logger function used by `bsky_log'. Logger must sutisfy following
      * usage:
@@ -779,8 +778,7 @@ ic_arr*)da)->data
     }
 
 
-    struct bsky_str bsky_shift_str(struct bsky_str str, size_t n)
-
+    struct bsky_str bsky_shift_str(struct bsky_str str, size_t n) {
         if (n > bsky_str_len(str)) {
             return (struct bsky_str){str.end, str.end};
         }
@@ -793,7 +791,11 @@ ic_arr*)da)->data
         return (struct bsky_str) { str, str + strlen(str) };
     }
 
-ic_arr*)da)->data    /*
+    struct bsky_str bsky_mk_str(char *str) {
+        return (struct bsky_str) { str, str + strlen(str) };
+    }
+
+	/*
      * BSKY JSON
      */
     void bsky_sb_push_json(struct bsky_str_builder *sb, struct bsky_json json)
@@ -1120,7 +1122,5 @@ ic_arr*)da)->data    /*
     #define __tmp_view_of_da(da, elem_size) __bsky_tmp_view_of_da(da,elem_size)
     #define tmp_view_of_da(da) bsky_tmp_view_of_da(da)
 #endif
-
-
 
 #endif //GUARD
