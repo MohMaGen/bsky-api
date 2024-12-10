@@ -116,6 +116,19 @@
     enum bsky_error_code {
         bsky_ec_Ok = 0, // no error
         bsky_ec_Tmp_overflow,
+
+
+        bsky_ec_Json_expect_CSB,
+        bsky_ec_Json_expect_OSB,
+        bsky_ec_Json_expect_CCB,
+        bsky_ec_Json_expect_OCB,
+        bsky_ec_Json_expect_Bool,
+        bsky_ec_Json_expect_Null,
+        bsky_ec_Json_expect_Number,
+        bsky_ec_Json_expect_OQ,
+        bsky_ec_Json_expect_CQ,
+        bsky_ec_Json_expect_Colon,
+		bsky_ec_Json_invalid_variant,
     };
 
     /**
@@ -131,6 +144,16 @@
                             bsky_log_error(ec);                \
                             return (ec);                       \
                         }                                      \
+
+    #define bsky_return_error_v(ec_v, ret) do {                \
+                        *ec = ec_v;                            \
+                        return (ret)                           \
+                    } while(0)                                 \
+
+	#define bsky_defer_ec(ec_v) do {                           \
+                        *ec = ec_v;                            \
+	                    goto defer;                            \
+                    } while(0)                                 \
 
 
 /*
@@ -216,6 +239,9 @@
     __bsky_da_append(void *self_gen, const void *elems,
                      size_t elem_size, size_t len);
 
+
+    void bsky_clear_da(void *self_get);
+
     /**
      * Free dynamic array.
      */
@@ -231,6 +257,7 @@
      */
     #define bsky_da_append(da, elem, len) __bsky_da_push(da, &(elem),\
                                                          sizeof (elem), len)
+
 
 
 /*
@@ -278,7 +305,7 @@
      */
     #define bsky_tmp_view_of_da(da)\
           __bsky_tmp_view_of_da(da,\
-              sizeof ((struct bsky_dynamic_arr*)da)->data[0])
+              sizeof (da)->data[0])\
 
 
 
@@ -301,6 +328,11 @@
      * length of the string (without null char) equal to end - start;
      */
     struct bsky_str         { char *start; char *end; };
+
+    /**
+     * Create BSKY string from valid c zero terminated string.
+     */
+    struct bsky_str bsky_mk_str(char *str);
 
     /**
      * Push char to `string builder'.
@@ -382,7 +414,8 @@
     /**
      * Shift string view.
      */
-    struct bsky_str bksy_shift_str(struct bksy_str, size_t n);
+    struct bsky_str bsky_shift_str(struct bsky_str, size_t n);
+
 
 
 
@@ -418,7 +451,9 @@
         union {
             struct { struct bsky_json      *data; size_t len; } arr;
             struct { struct bsky_json_pair *data; size_t len; } dct;
-            float num; char *str; int _bool;
+            long double num; 
+            char *str;
+            int _bool;
         };
     };
 
@@ -443,8 +478,32 @@
      */
     enum bsky_error_code bsky_json_of_str(struct bsky_str, struct bsky_json *);
 
+
+    /**
+     * 
+     */
+    struct bsky_json bsky_parse_json(struct bsky_str*, enum bsky_error_code*); 
+
+    struct bsky_json bsky_parse_json_arr(struct bsky_str*,
+                                         enum bsky_error_code*);
+    struct bsky_json bsky_parse_json_dct(struct bsky_str*,
+                                         enum bsky_error_code*);
+    struct bsky_json bsky_parse_json_str(struct bsky_str*,
+                                         enum bsky_error_code*);
+    struct bsky_json bsky_parse_json_num(struct bsky_str*,
+                                         enum bsky_error_code*);
+    struct bsky_json bsky_parse_json_null(struct bsky_str*,
+                                          enum bsky_error_code*);
+    struct bsky_json bsky_parse_json_bool(struct bsky_str*,
+                                          enum bsky_error_code*);
+
+
     typedef struct bsky_json      bsky_Json;
     typedef struct bsky_json_pair bsky_Json_Pair;
+
+    // helper functions.
+    struct bsky_json_da      { struct bsky_json      *data; size_t len, cap; };
+    struct bsky_json_pair_da { struct bsky_json_pair *data; size_t len, cap; };
 
 
 
@@ -465,6 +524,29 @@
         switch (code) {
         case bsky_ec_Ok:           return "Ok";
         case bsky_ec_Tmp_overflow: return "overflow of temporary arena!";
+
+        case bsky_ec_Json_expect_CSB: 
+            return "JSON: expect ']' at the end of array!";
+        case bsky_ec_Json_expect_OSB: 
+            return "JSON: expect '[' at the start of the array!";
+        case bsky_ec_Json_expect_CCB: 
+            return "JSON: expect '}' at the end of dictionary!";
+        case bsky_ec_Json_expect_OCB: 
+            return "JSON: expect '}' at the start of dictionary!";
+        case bsky_ec_Json_expect_Bool: 
+            return "JSON: expect 'true' or 'false'!";
+        case bsky_ec_Json_expect_Null: 
+            return "JSON: expect 'null'!";
+        case bsky_ec_Json_expect_Number: 
+            return "JSON: expect number!";
+        case bsky_ec_Json_expect_OQ: 
+            return "JSON: expect '\"' at the start of string!";
+        case bsky_ec_Json_expect_CQ: 
+            return "JSON: expect '\"' at the end of string!";
+        case bsky_ec_Json_expect_Colon: 
+            return "JSON: expect ':' between key and value!";
+        case bsky_ec_Json_invalid_variant:
+            return "JSON: parse invalid json variant!";
         }
     }
 
@@ -503,7 +585,9 @@
      */
 	#include <string.h>
     void bsky_da_free(void *da) {
-        free(((struct bsky_dynamic_arr*)(da))->data);
+        struct bsky_dynamic_arr *self = (struct bsky_dynamic_arr*) da;
+
+        if (self->data != NULL) free(self->data);
     }
 
     enum bsky_error_code 
@@ -517,7 +601,7 @@
             if (self->data == NULL) bsky_return_error(bsky_ec_Tmp_overflow);
         }
 
-        memcpy(self->data + self->len++, elem, elem_size);
+        memcpy(self->data + self->len++ * elem_size, elem, elem_size);
 
         return bsky_ec_Ok;
     }
@@ -541,6 +625,12 @@
         return bsky_ec_Ok;
     }
 
+    void bsky_clear_da(void *self_gen) {
+        struct bsky_dynamic_arr *self = (struct bsky_dynamic_arr*) self_gen;
+
+        *self = (struct bsky_dynamic_arr) { 0 }; 
+    }
+
     /*
      * BSKY VIEW
      */
@@ -556,9 +646,7 @@
         void *data = bsky_tmp_alloc(view.end - view.start);
         memcpy(data, view.start, view.end - view.start);
 
-        return (struct bsky_view) { data, (char*)data + 
-                        (view.end - view.start) / sizeof(char)
-        };
+        return (struct bsky_view) { data, data +  (view.end - view.start) };
     }
 
     struct bsky_view __bsky_tmp_view_of_da(void *da, size_t elem_size)
@@ -567,6 +655,7 @@
                                  __bsky_view_of_da(da, elem_size));
 
         bsky_da_free(da);
+        bsky_clear_da(da);
 
         return ret;
     }
@@ -690,13 +779,17 @@
                0;
     }
 
-    struct bsky_str bksy_shift_str(struct bksy_str str, size_t n)
+    struct bsky_str bsky_shift_str(struct bsky_str str, size_t n)
     {
         if (n > bsky_str_len(str)) {
             return (struct bsky_str){str.end, str.end};
         }
 
-        return struct bsky_str){str.start + n, str.end};
+        return (struct bsky_str) {str.start + n, str.end};
+    }
+
+    struct bsky_str bsky_mk_str(char *str) {
+        return (struct bsky_str) { str, str + strlen(str) };
     }
 
     /*
@@ -728,7 +821,7 @@
 
         } break;
         case bsky_json_Num: {
-            if (fabsf(json.num - (float)(int)json.num) < 0.0001) {
+            if (fabsl(json.num - (float)(int)json.num) < 0.0001) {
                 bsky_sb_push_fmt(sb, "%d", (int)json.num);
             } else {
                 bsky_sb_push_fmt(sb, "%f.3",    json.num);
@@ -751,57 +844,249 @@
         return bsky_sb_build_tmp(&sb);
     }
 
-    struct bsky_json
-    bsky_try_parse_json(struct bsky_str data, char **endptr,
-                    enum bsky_error_code* ec)
+    struct bsky_json bsky_parse_json_arr(struct bsky_str *data,
+                                         enum bsky_error_code *ec)
     {
-        char *inner_endptr = NULL;
+        *ec = bsky_ec_Ok;
 
-        *endptr = data.start;
-
-        data = bsky_trim_left(data);
-
-        struct sbky_json json = { 0 };
-
-        if (data.start[0] == '[') {
-            *endptr = data.start;
-            json.var = bsky_json_Arr;
-
-            do {
-                data = bksy_shift_str(data, 1);
-                struct bsky_json
-                       elem = bsky_try_parse_json(data, &inner_endptr, ec);
-
-                if (ec != bsky_ec_Ok) {
-                    return 
-                }
-            }
-        }
-    }
-
-    struct bsky_json
-    bsky_parse_json(struct bsky_str data, char **endptr,
-                    enum bsky_error_code* ec)
-    {
-        enum bsky_error_code ec;
-        return bsky_try_parse_json(data, endptr, &ec);
-    }
-
-    enum bsky_error_code
-    bsky_json_of_str(struct bsky_str str, struct bsky_json *result)
-    {
+        struct bsky_json_da arr_da = { 0 };
         struct bsky_json json = { 0 };
 
-        str = bsky_trim_left(str);
+        *data = bsky_trim_left(*data);
 
-        if (*str.start == '[') {
-            while (1) {
+        if (*data->start != '[') bsky_defer_ec(bsky_ec_Json_expect_OSB);
 
-            }
+        do {
+            *data = bsky_shift_str(*data, 1);
+            *data = bsky_trim_left(*data);
+            if (*data->start == ']') break;
+
+            struct bsky_json elem = bsky_parse_json(data, ec);
+            if (*ec != bsky_ec_Ok) bsky_defer_ec(*ec);
+
+            bsky_da_push(&arr_da, elem);
+
+            *data = bsky_trim_left(*data);
+        } while(*data->start == ',');
+
+        if (*data->start != ']') bsky_defer_ec(bsky_ec_Json_expect_CSB);
+
+        *ec = bsky_ec_Ok;
+        *data = bsky_shift_str(*data, 1);
+
+        struct bsky_view arr = bsky_tmp_view_of_da(&arr_da);
+
+        json.var = bsky_json_Arr;
+        json.arr.data = arr.start;
+        json.arr.len  = (arr.end - arr.start) / sizeof (struct bsky_json);
+
+    defer:
+        bsky_da_free(&arr_da);
+        return json;
+    }
+
+
+    struct bsky_json bsky_parse_json_dct(struct bsky_str *data,
+                                         enum bsky_error_code *ec)
+    {
+        *ec = bsky_ec_Ok;
+
+        struct bsky_json_pair_da dct_da = { 0 };
+        struct bsky_json json = { 0 };
+
+        *data = bsky_trim_left(*data);
+
+        if (*data->start != '{') bsky_defer_ec(bsky_ec_Json_expect_OCB);
+
+        json.var = bsky_json_Dct;
+
+        struct bsky_json elem = { 0 };
+        struct bsky_json name = { 0 };
+        struct bsky_json_pair pair = { 0 };
+
+        do {
+            *data = bsky_shift_str(*data, 1);
+
+            name = bsky_parse_json_str(data, ec);
+            if (*ec != bsky_ec_Ok) bsky_defer_ec(*ec);
+
+            *data = bsky_trim_left(*data);
+
+            if (*data->start != ':') bsky_defer_ec(bsky_ec_Json_expect_Colon);
+
+            *data = bsky_shift_str(*data, 1);
+
+            elem = bsky_parse_json(data, ec);
+
+            if (*ec != bsky_ec_Ok) bsky_defer_ec(*ec);
+
+            pair.name  = name.str;
+            pair.value = elem;
+            bsky_da_push(&dct_da, pair);
+
+            *data = bsky_trim_left(*data);
+        } while(*data->start == ',');
+
+        if (*data->start != '}') bsky_defer_ec(bsky_ec_Json_expect_CCB);
+
+        *data = bsky_shift_str(*data, 1);
+
+        struct bsky_view dct = bsky_tmp_view_of_da(&dct_da);
+
+        json.dct.data = dct.start;
+        json.dct.len  = (dct.end - dct.start) / sizeof (struct bsky_json_pair);
+
+    defer:
+        bsky_da_free(&dct_da);
+        return json;
+    }
+
+    struct bsky_json bsky_parse_json_str(struct bsky_str *data,
+                                         enum bsky_error_code *ec)
+    {
+        *ec = bsky_ec_Ok;
+
+        struct bsky_str_builder sb = { 0 };
+        struct bsky_json json = { 0 };
+
+        *data = bsky_trim_left(*data);
+
+        if (*data->start != '"') bsky_defer_ec(bsky_ec_Json_expect_OQ);
+
+        *data = bsky_shift_str(*data, 1);
+
+        char *end = data->start;
+
+        while (end < data->end && *end != '"') {
+            if (*end == '\\' && end+1 != data->end) end++;
+            end++;
         }
 
-        *result = json;
-        return bsky_ec_Ok;
+        bsky_sb_push_str(&sb, (struct bsky_str) { data->start, end });
+        data->start = end;
+
+        if (end >= data->end) bsky_defer_ec(bsky_ec_Json_expect_CQ);
+
+        data->start++;
+
+
+
+        struct bsky_str str = bsky_sb_build_tmp(&sb);
+
+        json.var = bsky_json_Str;
+        json.str = str.start;
+
+    defer:
+        bsky_da_free(&sb);
+        return json;
+    }
+
+    struct bsky_json bsky_parse_json_num(struct bsky_str *data,
+                                         enum bsky_error_code *ec)
+    {
+        *ec = bsky_ec_Ok;
+
+        struct bsky_json json = { 0 };
+
+        *data = bsky_trim_left(*data);
+
+        char *endptr = NULL;
+        long double v = strtold(data->start, &endptr);
+
+        if (endptr == data->start) bsky_defer_ec(bsky_ec_Json_expect_Number);
+
+        data->start = endptr;
+
+        json.var = bsky_json_Num;
+        json.num = v;
+
+    defer:
+        return json;
+    }
+
+    struct bsky_json bsky_parse_json_null(struct bsky_str *data,
+                                          enum bsky_error_code *ec)
+    {
+        *ec = bsky_ec_Ok;
+
+        struct bsky_json json = { 0 };
+
+        *data = bsky_trim_left(*data);
+
+        if (!bsky_str_starts_with(*data, bsky_mk_str("null")))
+            bsky_defer_ec(bsky_ec_Json_expect_Null);
+
+        json.var = bsky_json_Null;
+
+        data->start += 4;
+
+	defer:
+        return json;
+    }
+
+    struct bsky_json bsky_parse_json_bool(struct bsky_str *data,
+                                          enum bsky_error_code *ec)
+    {
+        *ec = bsky_ec_Ok;
+
+        struct bsky_json json = { 0 };
+
+        *data = bsky_trim_left(*data);
+
+        json.var = bsky_json_Bool;
+
+        if (bsky_str_starts_with(*data, bsky_mk_str("false"))) {
+            data->start += 5;
+            json._bool = 0;
+
+        } else if (bsky_str_starts_with(*data, bsky_mk_str("true"))) {
+            data->start += 4;
+            json._bool = 1;
+
+        } else {
+            bsky_defer_ec(bsky_ec_Json_expect_Bool);
+        }
+
+    defer:
+        return json;
+    }
+
+    struct bsky_json bsky_parse_json(struct bsky_str *data,
+                                     enum bsky_error_code* ec)
+    {
+        *ec = bsky_ec_Ok;
+        struct bsky_json json = { 0 };
+
+        *data = bsky_trim_left(*data);
+        struct bsky_str data_s = *data;
+
+        json = bsky_parse_json_null(data, ec);
+        if (*ec != bsky_ec_Json_expect_Null) return json;
+
+        *data = data_s;
+        json = bsky_parse_json_bool(data, ec);
+        if (*ec != bsky_ec_Json_expect_Bool) return json;
+
+        *data = data_s;
+        json = bsky_parse_json_num(data, ec);
+        if (*ec != bsky_ec_Json_expect_Number) return json;
+
+        *data = data_s;
+        json = bsky_parse_json_str(data, ec);
+        if (*ec != bsky_ec_Json_expect_OQ) return json;
+
+        *data = data_s;
+        json = bsky_parse_json_arr(data, ec);
+        if (*ec != bsky_ec_Json_expect_OSB) return json;
+
+        *data = data_s;
+        json = bsky_parse_json_dct(data, ec);
+        if (*ec != bsky_ec_Json_expect_OCB) return json;
+
+        *ec = bsky_ec_Json_invalid_variant;
+
+    defer:
+        return json;
     }
 
 
