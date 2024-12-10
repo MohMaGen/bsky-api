@@ -33,7 +33,7 @@
  */
 
 
-#ifndef __BSKY_API_H_GUARD__
+#ifndef __BSKY_API_H_GUARD__ic_arr*)da)->data
 #define __BSKY_API_H_GUARD__
 #include <stddef.h>
 #include <stdlib.h>
@@ -60,7 +60,7 @@
     #define BSKY_LOG_LEVEL bsky_log_Info
     #endif
 
-
+ic_arr*)da)->data
     /**
      * Logger function used by `bsky_log'. Logger must sutisfy following
      * usage:
@@ -414,7 +414,9 @@
     /**
      * Shift string view.
      */
+
     struct bsky_str bsky_shift_str(struct bsky_str, size_t n);
+
 
 
 /*
@@ -665,7 +667,7 @@
         const char nullc = '\0';
 
         if (sb->len == 0) {
-            char buf[] = { c, nullc };
+            char buf[] = { c, nullc };ic_arr*)da)->data
             __bsky_da_append(sb, buf, sizeof(buf), 2);
         }
         else {
@@ -776,11 +778,13 @@
                0;
     }
 
+
     struct bsky_str bsky_shift_str(struct bsky_str str, size_t n)
-    {
+
         if (n > bsky_str_len(str)) {
             return (struct bsky_str){str.end, str.end};
         }
+
 
         return (struct bsky_str) {str.start + n, str.end};
     }
@@ -789,7 +793,7 @@
         return (struct bsky_str) { str, str + strlen(str) };
     }
 
-    /*
+ic_arr*)da)->data    /*
      * BSKY JSON
      */
     void bsky_sb_push_json(struct bsky_str_builder *sb, struct bsky_json json)
@@ -840,6 +844,7 @@
 
         return bsky_sb_build_tmp(&sb);
     }
+
 
     struct bsky_json bsky_parse_json_arr(struct bsky_str *data,
                                          enum bsky_error_code *ec)
