@@ -1,0 +1,5 @@
+#! /usr/bin/env bash
+
+clang -o ../build/run-tests ./run-test.c -g3 \
+    -lm -lunity -L Unity -I ./Unity/src/ \
+    && gdb ../build/run-tests

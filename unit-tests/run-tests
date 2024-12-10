@@ -1,4 +1,4 @@
 #! /usr/bin/env bash
 
 clang -o ../build/run-tests ./run-test.c -lm -lunity -L Unity -I ./Unity/src/ \
-	&& ../build/run-tests
+    && ../build/run-tests
