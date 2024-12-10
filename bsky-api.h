@@ -417,8 +417,6 @@
     struct bsky_str bsky_shift_str(struct bsky_str, size_t n);
 
 
-
-
 /*
  * module:
  * ===========================================================================
@@ -504,7 +502,6 @@
     // helper functions.
     struct bsky_json_da      { struct bsky_json      *data; size_t len, cap; };
     struct bsky_json_pair_da { struct bsky_json_pair *data; size_t len, cap; };
-
 
 
 /*
