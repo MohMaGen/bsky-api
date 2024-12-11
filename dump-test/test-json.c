@@ -39,7 +39,11 @@ int main(void)
         },
         .arr.len = 3,
     };
+
     printf("%s", bsky_tmp_str_of_json(json).start);
+
+
+    bsky_log(bsky_log_Info, "json: `%s`", bsky_tmp_str_of_json(json).start);
 
     return 0;
 }
