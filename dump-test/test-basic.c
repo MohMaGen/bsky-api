@@ -70,6 +70,7 @@ int main(void)
     bsky_log(bsky_log_Info, "sb is %s", sb.data); // sb has been freed
 
 
+
     return 0;
 }
 

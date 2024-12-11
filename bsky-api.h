@@ -196,6 +196,7 @@
      * Default tmp arena allocator.
      */
     void *__bsky_default_tmp_alloc(size_t);
+
     /**
      * Reset default tmp arena.
      */
@@ -239,7 +240,7 @@
                      size_t elem_size, size_t len);
 
 
-    void bsky_clear_da(void *self_get);
+    void  bsky_clear_da(void *self_get);
 
     /**
      * Free dynamic array.
@@ -254,8 +255,8 @@
     /**
      * Push copy of element to the end of the dynamic array.
      */
-    #define bsky_da_append(da, elem, len) __bsky_da_push(da, &(elem),\
-                                                         sizeof (elem), len)
+    #define bsky_da_append(da, elems, len) __bsky_da_push(da, elems,\
+                                                    sizeof (*elems), len)
 
 
 
@@ -471,11 +472,6 @@
      * Push JSON string to string builder.
      */
     void bsky_sb_push_json(struct bsky_str_builder *, struct bsky_json);
-
-    /**
-     * Parse JSON data.
-     */
-    enum bsky_error_code bsky_json_of_str(struct bsky_str, struct bsky_json *);
 
 
     /**
@@ -1095,6 +1091,39 @@
  * If defined `BSKY_API_STRIP_PREFIX' will strip `bsky_' prefix from functions.
  */
 #ifdef BSKY_API_STRIP_PREFIX
+	/*
+     * BSKY LOG
+     */
+    #define log(level, fmt, ...) bsky_log(level, fmt, __VA_ARGS__)
+
+    #define bsky_log_None    bsky_log_None  
+    #define bsky_log_Error   bsky_log_Error
+    #define bsky_log_Warning bsky_log_Warning
+    #define bsky_log_Info    bsky_log_Info
+
+    /*
+     * BSKY ERROR
+     */
+    #define ec_Ok                   bsky_ec_Ok
+    #define ec_Tmp_overflow         bsky_ec_Tmp_overflow
+    #define ec_Json_expect_CSB      bsky_ec_Json_expect_CSB
+    #define ec_Json_expect_OSB      bsky_ec_Json_expect_OSB
+    #define ec_Json_expect_CCB      bsky_ec_Json_expect_CCB
+    #define ec_Json_expect_OCB      bsky_ec_Json_expect_OCB
+    #define ec_Json_expect_Bool     bsky_ec_Json_expect_Bool
+    #define ec_Json_expect_Null     bsky_ec_Json_expect_Null
+    #define ec_Json_expect_Number   bsky_ec_Json_expect_Number
+    #define ec_Json_expect_OQ       bsky_ec_Json_expect_OQ
+    #define ec_Json_expect_CQ       bsky_ec_Json_expect_CQ
+    #define ec_Json_expect_Colon    bsky_ec_Json_expect_Colon
+    #define ec_Json_invalid_variant bsky_ec_Json_invalid_variant
+
+    #define str_of_error_code(ec)     bsky_str_of_error_code(ec)
+    #define log_error(ec)             bsky_log_error(ec)
+    #define return_error(ec)          bsky_return_error(ec)
+    #define return_error_v(ec_v, ret) bsky_return_error_v(ec_v, ret)
+    #define defer_ec(ec)              bsky_defer_ec(ec)
+
     /*
      * BSKY TMP ARENA
      */
@@ -1107,15 +1136,62 @@
     #define da_free(da) bsky_da_free(da)
     #define __da_push(da, elem_size) __bsky_da_push(da, elem_size)
     #define da_push(da) bsky_da_push(da)
+    #define __da_append(da, e, es, len) __bsky_da_append(da, e, es, len)
+    #define bsky_da_append(da, e, es) bsky_da_append(da, e, es)
+    #define clear_da(da) bsky_clear_da(da)
+    #define da_free(da) bsky_da_free(da)
 
     /*
-     * BSKY 
+     * BSKY VIEW
      */
     #define __view_of_da(da, elem_size) __bsky_view_of_da(da, elem_size)
     #define view_of_da(da) bsky_view_of_da(da)
     #define view_to_tmp(view) bsky_view_to_tmp(view)
     #define __tmp_view_of_da(da, elem_size) __bsky_tmp_view_of_da(da,elem_size)
     #define tmp_view_of_da(da) bsky_tmp_view_of_da(da)
+
+    /*
+     * BSKY STRING
+     */
+    #define mk_str(cstr) bsky_mk_str(cstr)
+    #define sb_push(sb, c) bsky_sb_push(sb, c)
+    #define sb_push_str(sb, str) bsky_sb_push_str(sb, str)
+    #define sb_push_fmt(sb, fmt, ... ) bsky_sb_push_fmt(sb, fmt, __VA_ARGS__)
+    #define sb_build(sb) bsky_sb_build(sb)
+    #define sb_build_tmp(sb) bsky_sb_build_tmp(sb)
+    #define view_of_str(str) bsky_view_of_str(str)
+    #define trim_left(str) bsky_trim_left(str)
+    #define str_starts_with(fst, snd) bsky_str_starts_with(fst, snd)
+    #define str_ends_with(fst, snd) bsky_str_ends_with(fst, snd)
+    #define str_eq(fst, snd) bsky_str_eq(fst, snd)
+    #define str_cmp(fst, snd) bsky_str_cmp(fst, snd)
+    #define str_len(str) str_len(str)
+    #define shift_str(str, n) bsky_shift_str(str, n)
+
+    /*
+     * BSKY JSON
+     */
+    #define json_Arr bsky_json_Arr
+    #define json_Dct bsky_json_Dct
+    #define json_Num bsky_json_Num
+    #define json_Str bsky_json_Str
+    #define json_Bool bsky_json_Bool
+    #define json_Null bsky_json_Null
+
+    #define tmp_str_of_json(json) bsky_tmp_str_of_json(json)
+    #define sb_push_json(sb, json) bsky_sb_push_json(sb, json)
+    #define parse_json(str, ec) bsky_parse_json(str, ec)
+
+    #define parse_json_arr(str, ec) bsky_parse_json_arr(str, ec)
+    #define parse_json_dct(str, ec) bsky_parse_json_dct(str, ec)
+    #define parse_json_num(str, ec) bsky_parse_json_num(str, ec)
+    #define parse_json_str(str, ec) bsky_parse_json_str(str, ec)
+    #define parse_json_bool(str, ec) bsky_parse_json_bool(str, ec)
+    #define parse_json_null(str, ec) bsky_parse_json_null(str, ec)
+
+    #define Json      bsky_Json;
+    #define Json_Pair bsky_Json_Pair;
+
 #endif
 
 #endif //GUARD
