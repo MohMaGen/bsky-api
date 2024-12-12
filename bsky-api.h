@@ -663,11 +663,11 @@
 
         if (sb->len == 0) {
             char buf[] = { c, nullc };
-            __bsky_da_append(sb, buf, sizeof(buf), 2);
+            __bsky_da_append(sb, buf, sizeof(char), 2);
         }
         else {
             sb->data[sb->len-1] = c;
-            bsky_da_push(sb, nullc);
+            __bsky_da_push(sb, &nullc, sizeof(char));
         }
     }
 
@@ -679,7 +679,8 @@
 
         __bsky_da_append(sb, str.start, sizeof(char), str.end - str.start);
 
-        if (sb->data[sb->len-1] != '\0') bsky_da_push(sb, nullc);
+        if (sb->data[sb->len-1] != '\0')
+            __bsky_da_push(sb, &nullc, sizeof(char));
     }
 
     #include <stdarg.h>
@@ -793,26 +794,27 @@
     {
         switch (json.var) {
         case bsky_json_Arr: {
-            bsky_sb_push_fmt(sb, "[");
+            bsky_sb_push(sb, '[');
 
             for (size_t i = 0; i < json.arr.len; ++i) {
                 bsky_sb_push_json(sb, json.arr.data[i]);
 
-                if (i != json.arr.len-1) bsky_sb_push_fmt(sb, ",");
-                else                     bsky_sb_push_fmt(sb, "]");
+                if (i != json.arr.len-1) bsky_sb_push(sb, ',');
             }
+
+            bsky_sb_push(sb, ']');
         } break;
         case bsky_json_Dct: {
-            bsky_sb_push_fmt(sb, "{");
+            bsky_sb_push(sb, '{');
 
             for (size_t i = 0; i < json.dct.len; ++i) {
                 bsky_sb_push_fmt(sb, "\"%s\":", json.dct.data[i].name);
                 bsky_sb_push_json(sb, json.dct.data[i].value);
 
-                if (i != json.dct.len-1) bsky_sb_push_fmt(sb, ",");
-                else                     bsky_sb_push_fmt(sb, "}");
+                if (i < json.dct.len-1) bsky_sb_push(sb, ',');
             }
 
+            bsky_sb_push(sb, '}');
         } break;
         case bsky_json_Num: {
             if (fabsl(json.num - (float)(int)json.num) < 0.0001) {
@@ -901,6 +903,8 @@
 
         do {
             *data = bsky_shift_str(*data, 1);
+            *data = bsky_trim_left(*data);
+            if (*data->start == '}') break;
 
             name = bsky_parse_json_str(data, ec);
             if (*ec != bsky_ec_Ok) bsky_defer_ec(*ec);
