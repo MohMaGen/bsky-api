@@ -39,6 +39,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <stdio.h>
+#include <curl/curl.h>
 
 #define BSKY_ARRAY_LEN(array) (sizeof (array) / sizeof (array)[0])
 
@@ -127,7 +128,16 @@
         bsky_ec_Json_expect_OQ,
         bsky_ec_Json_expect_CQ,
         bsky_ec_Json_expect_Colon,
-		bsky_ec_Json_invalid_variant,
+        bsky_ec_Json_invalid_variant,
+
+        bsky_ec_Failed_to_init_curl
+		bsky_ec_Invalid_id,
+
+        bsky_ec_Invalid_request,
+        bsky_ec_Expired_token,
+        bsky_ec_Ivalid_token,
+        bsky_ec_Account_takedown,
+        bsky_ec_Auth_factor_token_required,
     };
 
     /**
@@ -417,10 +427,24 @@
 
     struct bsky_str bsky_shift_str(struct bsky_str, size_t n);
 
+    /**
+     * FN                         BSKY STR FROM FILE                         FN
+     *
+     * Read string from file. Will return empty string in case when read
+     * failed.
+     */
+	struct bsky_str bsky_str_from_file_tmp(const char *file_path);
+
+
+    /**
+     * FN                           BSKY STR NULL                            FN
+     *
+     * Create NULL string.
+     */
+	struct bsky_str bsky_str_null();
 
 
 /*
- * module:
  * ===========================================================================
  *                                    JSON
  * ===========================================================================
@@ -501,10 +525,221 @@
     struct bsky_json_pair_da { struct bsky_json_pair *data; size_t len, cap; };
 
 
+/**
+ * ============================================================================
+ *                                   API TYPES
+ * ============================================================================
+ */
+
+	/**
+     * STRUCT                     BSKY IDENTIFIER                        STRUCT
+     *
+     * Tagged union representing different types of user identifiers.
+     *
+     * TODO:
+     *    implement other types.
+     */
+    struct bsky_identifier {
+        enum { bsky_id_Handle, bsky_id_Invalid } var;
+        union { 
+            struct { struct bsky_str username, server; } handle;
+        };
+    };
+
+	/**
+     * FN                        BKSY MK HANDLE                              FN
+     *
+     * Construct bsky identifier from handle str. This function do not fully
+     * validate handle. So handle must be valid.
+     *
+     * PARAMS:
+     *    - handle -- Bsky handle. e.g. "username.server.exmpl".
+     */
+    struct bsky_identifier bsky_mk_handle_tmp(const char *handle);
+
+
+	/**
+     * FN                     BKSY GET SERVER OF ID                          FN
+     *
+     * Return PDS server of actor by identifier.
+     *
+     * SEE ALSO:
+     *    - BSKY SERVERS:
+     *      `https://docs.bsky.app/docs/advanced-guides/api-directory'
+     */
+    struct bsky_str bsky_get_server_of_id(struct bsky_identifier);
+
+	/**
+     * FN                        BKSY ID IS VALID                            FN
+     *
+     * Check is id valid or not.
+     */
+    int bsky_id_is_valid(struct bsky_identifier);
+
+/*
+ * ============================================================================
+ *                                    SESSION
+ * ============================================================================
+ */
+    /**
+     * ENUM                      BSKY SESSION STATUS                       ENUM
+     *
+     * 
+     * This field represent connections's status. `bsky_session_status_Active'
+     * represents that session is active; `bsky_session_status_Null' represents
+     * that no information about session active and status.
+     * all other statuses tells that
+     * session is inactive.
+     *
+     * NOTE:
+     *    This enumeration represents `active' and `status' fields of 200 code
+     *    repsonse for `com.atproto.server.createSession'.
+     *
+     * SEE ALSO:
+     *    - bsky api documentation for `com.atproto.server.createSession':
+     * `https://docs.bsky.app/docs/api/com-atproto-server-create-session'
+     */
+    enum bsky_session_status {
+        bsky_session_status_Null = 0,
+
+        bsky_session_status_Active,
+        bsky_session_status_Inactive, // status not provied, but not active.
+        bsky_session_status_Takedown,
+        bsky_session_status_Suspended,
+        bsky_session_status_Deactivated,
+    };
+
+	/**
+     * STRUCT                       BSKY SESSION EMAIL                   STRUCT
+     *
+     * Structure representing email of the session.
+     *
+     * NOTE:
+     *    Fields of this structure represents fields `email', `emailConfirmed',
+     *    and `emailAuthFactor' of 200 code response for
+     *    `com.atproto.server.createSession'.
+     * 
+     * SEE ALSO:
+     *    - bsky api documentation for `com.atproto.server.createSession':
+     * `https://docs.bsky.app/docs/api/com-atproto-server-create-session'
+     */
+    struct bsky_session_email {
+        struct bsky_str email;
+
+        enum {
+            bsky_session_email_Null = 0, 
+
+            bsky_session_email_Confirmed,
+            bsky_session_email_Not_confirmed,
+        } confirmed;
+
+        enum {
+            bsky_session_email_Null = 0,
+
+            bsky_session_email_Auth_factor,
+            bsky_session_email_No_auth_factor,
+        } auth_factor;
+    };
+
+
+
+    /**
+     * STRUCT                        BSKY SESSION                        STRUCT
+     *
+     * Struct contains information about current session. 
+     *
+     * NOTE:
+     *    The `bsky_session' do not contain authorization keys. The auth keys
+     *    are contained by `bsky_auth'.
+     * 
+     * SEE ALSO:
+     *    - bsky api documentation for `com.atproto.server.createSession':
+     * `https://docs.bsky.app/docs/api/com-atproto-server-create-session'
+     * 
+     *    - bsky api documentation for `com.atproto.server.getSession':
+     * `https://docs.bsky.app/docs/api/com-atproto-server-get-session'
+     */
+    struct bsky_session {
+        struct bsky_str handle;
+        struct bsky_str did;
+
+        struct bsky_str didDoc;
+        struct bsky_session_email  email;
+        enum   bsky_session_status status;
+    };
+
+    /**
+     * STRUCT                        BSKY SESSION                        STRUCT
+     *
+     * Struct contains information session's authorization. To get authorized
+     * session you ned to create session by `bsky_create_session'.
+     *
+     * SEE ALSO:
+     *    - bsky api documentation for `com.atproto.server.createSession':
+     * `https://docs.bsky.app/docs/api/com-atproto-server-create-session'
+     */
+    struct bsky_auth {
+        struct bsky_str accessJwt;
+        struct bsky_str refreshJwt;
+    };
+
+    /**
+     * FN                        BSKY CREATE SESSION                         FN
+     * 
+     * Create authorized session for user (Actor).
+     *
+     * PARAMS:
+     *    - server     -- ATProto PDS Server url [The server where Actor
+     *              hosted, for example: bsky.social -- is default PDS Server.]
+     * 
+     *    - identifier -- Identifier of a an Actor. It can be handle or any
+     *              other identifier of the Actor allowed by bluesky api.
+     * 
+     *    - password   -- Password for authorization.
+     *
+     *    - auth_factor -- Auth factor token. Not required. If not provided
+     *              must be (struct bsky_str) { NULL, NULL }.
+     *
+     *    - ec         -- Error code pointer. If session was created
+     *              successfully this would be `bsky_ec_Ok'. Possible errors:
+     *               Protocol errors:
+     *                   - `bsky_ec_Invalid_request'
+     *                   - `bsky_ec_Expired_token'
+     *                   - `bsky_ec_Ivalid_token'
+     *                   - `bsky_ec_Account_takedown'
+     *                   - `bsky_ec_Auth_factor_token_required'
+     * 
+     *               - `bsky_ec_Failed_to_init_curl' -- in case curl init
+     *                                               will failed.
+     *               - `bsky_ec_Invalid_id' -- provided identifier is invalid.
+     * 
+     * SEE ALSO:
+     *    - bsky api documentation for `com.atproto.server.createSession':
+     * `https://docs.bsky.app/docs/api/com-atproto-server-create-session'
+     */
+    struct bsky_crses_resp;
+    struct bsky_crses_resp 
+    bsky_create_session(struct bsky_identifier identifier,
+                        struct bsky_str        password,
+                        struct bsky_str        auth_factor,
+                        enum bsky_error_code  *ec);
+
+    struct bsky_crses_resp {
+        struct bsky_auth    auth;
+        struct bsky_session session;
+    };
+
+
+/**
+ * ============================================================================
+ *                                RECORD
+ * ============================================================================
+ */
+
 /*
  * ============================================================================
  *                             IMPLEMENTATION
- * ===========================================================================
+ * ============================================================================
  *
  * To enable implementation predefine `BSKY_API_IMPLEMENTATION' macro.
  */
@@ -785,6 +1020,30 @@
 
     struct bsky_str bsky_mk_str(char *str) {
         return (struct bsky_str) { str, str + strlen(str) };
+    }
+
+
+    struct bsky_str bsky_str_from_file_tmp(const char *file_path)
+    {
+        struct bsky_str_builder sb = { 0 };
+        char buffer[1024];
+        FILE *file;
+
+        file = fopen(file_path, "r");
+        if (!file) return bsky_str_null();
+
+        size_t len = 0;
+        while ((len = fread(buffer, sizeof buffer, 1, fp)) > 0) {
+            bsky_sb_push_str(&sb, (struct bsky_str) { buffer, buffer + len });
+        }
+
+        fclose(file);
+
+        return bsky_sb_build_tmp(&sb);
+    }
+
+    struct bsky_str bsky_str_null() {
+        return (struct bsky_str) { NULL, NULL };
     }
 
     /*
@@ -1088,6 +1347,69 @@
         return json;
     }
 
+    /*
+     * BSKY API TYPES
+     */
+    struct bsky_identifier bsky_mk_handle_tmp(const char *_handle) {
+        struct bsky_str_builder     sb = { 0 };
+        struct bsky_identifier      id = { 0 };
+        struct bsky_str         handle = { 0 };
+
+        handle = bsky_mk_str(_handle);
+
+        id.var = bsky_id_Handle;
+        while (handle.start != handle.end && *handle.start != '.') {
+            handle.start++;
+        }
+
+        if (handle.start == handle.end) {
+            id.var = bsky_id_Invalid;
+            return id;
+        }
+
+        bsky_sb_push_str((struct bsky_str) { _handle, handle.start });
+        id.handle.username = bsky_sb_build_tmp(&sb);
+
+        bsky_sb_push_str((struct bsky_str) { handle.start+1, handle.end });
+        id.handle.server   = bsky_sb_build_tmp(&sb);
+
+        return id;
+    }
+
+    /*
+     * BSKY SESSION
+     */
+    struct bsky_crses_resp 
+    bsky_create_session(struct bsky_identifier identifier,
+                        struct bsky_str        password,
+                        struct bsky_str        auth_factor,
+                        enum bsky_error_code  *ec)
+    {
+        struct bsky_str_builder  sb = { 0 };
+        struct bsky_crses_resp  res = { 0 };
+        struct bsky_str         url = { 0 };
+
+        if (!bsky_id_is_valid(identifier)) bsky_defer_ec(bsky_ec_Invalid_id);
+
+
+        bsky_sb_push_fmt(&sb, "%s/xrpc/com.atproto.server.createSession", 
+                         bsky_get_server_of_id(identifier).start);
+
+        url = bsky_sb_build_tmp(&sb);
+
+
+        CURL *curl = curl_easy_init();
+        if (!curl) bsky_defer_ec(bsky_ec_Failed_to_init_curl);
+
+        curl_ease_setopt(curl, CULROPT_URL, url.start);
+        curl_ease_setopt(curl, CULROPT_WRITEFUNCTION, bsky_sb_write);
+        curl_ease_setopt(curl, CULROPT_WRITEDATA, &sb);
+
+
+
+    defer:
+        return res;
+    }
 
 #endif
 
