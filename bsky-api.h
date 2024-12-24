@@ -130,7 +130,7 @@
         bsky_ec_Json_expect_Colon,
         bsky_ec_Json_invalid_variant,
 
-        bsky_ec_Failed_to_init_curl
+        bsky_ec_Failed_to_init_curl,
 		bsky_ec_Invalid_id,
 
         bsky_ec_Invalid_request,
@@ -527,6 +527,48 @@
 
 /**
  * ============================================================================
+ *                                    CURL
+ * ============================================================================
+ */
+   /*
+    * STRUCT                       BSKY HEADERS                          STRUCT
+    *
+    * Dynamic array of http headers.
+    *
+    */
+    struct bsky_headers {
+        struct bsky_str *data;
+        size_t len, cap;
+    };
+
+    /**
+     * STRUCT                      BSKY HEADERS VIEW                     STRUCT
+     *
+     * View of http headers.
+     *
+     */
+    struct bksy_headers_view {
+        struct bsky_str *start;
+        struct bsky_str *end;
+    };
+    /**
+     *
+     * FN                         BSKY HTTP REQUST                           FN
+     *
+     * Do a http/https requst to the server with provided headers and request
+     * data.
+     *
+     * ARGS:
+     *    1. server url. (bsky_str)
+     *    2. headers. (bsky_headers)
+     *    3. request. (bsky_json)
+     */
+    struct bsky_json bsky_http_request(struct bsky_str, struct bsky_view,
+                                       struct bsky_json);
+
+
+/*
+ * ============================================================================
  *                                   API TYPES
  * ============================================================================
  */
@@ -627,20 +669,19 @@
         struct bsky_str email;
 
         enum {
-            bsky_session_email_Null = 0, 
+            bsky_session_email_c_Null = 0, 
 
             bsky_session_email_Confirmed,
             bsky_session_email_Not_confirmed,
         } confirmed;
 
         enum {
-            bsky_session_email_Null = 0,
+            bsky_session_email_f_Null = 0,
 
             bsky_session_email_Auth_factor,
             bsky_session_email_No_auth_factor,
         } auth_factor;
     };
-
 
 
     /**
@@ -668,8 +709,10 @@
         enum   bsky_session_status status;
     };
 
+
+
     /**
-     * STRUCT                        BSKY SESSION                        STRUCT
+     * STRUCT                         BSKY AUTH                          STRUCT
      *
      * Struct contains information session's authorization. To get authorized
      * session you ned to create session by `bsky_create_session'.
@@ -1348,6 +1391,47 @@
     }
 
     /*
+     * BSKY CURL
+     */
+    struct bsky_json bsky_http_request(struct bsky_str server,
+                                       struct bsky_view _headers,
+                                       struct bsky_json request
+                                       enum bsky_error_code *ec)
+    {
+        bsky_json res = { 0 };
+        bsky_str  req = { 0 };
+        bsky_str_builder sb = { 0 };
+
+        bsky_headers_view hds = { _headers.start, _headers.end };
+        req = bsky_tmp_str_of_json(request);
+
+        *ec = bsky_ec_Ok;
+
+        curl_slist *headers_list = NULL;
+        headers_list = curl_slist_append(headers_list, "Content-type: application/json");
+        while (headers.end - headers.start > 0)
+             headers_list = curl_slist_append(headers_list,
+                                              (headers.start++)->start);
+        
+	CURL *curl = curl_easy_init();
+	if (!curl) bsky_defer_ec(bsky_ec_Failed_init_curl);
+
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, header_list);
+        curl_easy_setopt(curl, CURLOPT_URL, server.start);
+        curl_easy_setopt(curl, CURLOPT_POSTDATA, req.start);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, bsky_sb_write);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &sb);
+
+        CURLcode ret = curl_easy_perform(curl);
+        if (ret != 0) bsky_defer_ec(bsky_ec_Failed_perform_curl);
+
+
+    defer:
+        return res;
+    }
+
+
+    /*
      * BSKY API TYPES
      */
     struct bsky_identifier bsky_mk_handle_tmp(const char *_handle) {
@@ -1385,27 +1469,7 @@
                         struct bsky_str        auth_factor,
                         enum bsky_error_code  *ec)
     {
-        struct bsky_str_builder  sb = { 0 };
         struct bsky_crses_resp  res = { 0 };
-        struct bsky_str         url = { 0 };
-
-        if (!bsky_id_is_valid(identifier)) bsky_defer_ec(bsky_ec_Invalid_id);
-
-
-        bsky_sb_push_fmt(&sb, "%s/xrpc/com.atproto.server.createSession", 
-                         bsky_get_server_of_id(identifier).start);
-
-        url = bsky_sb_build_tmp(&sb);
-
-
-        CURL *curl = curl_easy_init();
-        if (!curl) bsky_defer_ec(bsky_ec_Failed_to_init_curl);
-
-        curl_ease_setopt(curl, CULROPT_URL, url.start);
-        curl_ease_setopt(curl, CULROPT_WRITEFUNCTION, bsky_sb_write);
-        curl_ease_setopt(curl, CULROPT_WRITEDATA, &sb);
-
-
 
     defer:
         return res;
