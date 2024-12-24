@@ -1408,7 +1408,9 @@
         *ec = bsky_ec_Ok;
 
         curl_slist *headers_list = NULL;
-        headers_list = curl_slist_append(headers_list, "Content-type: application/json");
+        headers_list = curl_slist_append(headers_list,
+                                    "Content-type: application/json");
+
         while (headers.end - headers.start > 0)
              headers_list = curl_slist_append(headers_list,
                                               (headers.start++)->start);
