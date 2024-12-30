@@ -131,7 +131,8 @@
         bsky_ec_Json_invalid_variant,
 
         bsky_ec_Failed_to_init_curl,
-		bsky_ec_Invalid_id,
+		bsky_ec_Failed_to_perform_curl,
+        bsky_ec_Invalid_id,
 
         bsky_ec_Invalid_request,
         bsky_ec_Expired_token,
@@ -149,10 +150,10 @@
                     "%s. %s:%d", bsky_str_of_error_code(ec),   \
                     __FILE__, __LINE__);                       \
 
-    #define bsky_return_error(ec) if (ec != bsky_log_Error) {  \
+    #define bsky_return_error(ec) do {                         \
                             bsky_log_error(ec);                \
                             return (ec);                       \
-                        }                                      \
+                        } while(0)                             \
 
     #define bsky_return_error_v(ec_v, ret) do {                \
                         *ec = ec_v;                            \
@@ -443,6 +444,15 @@
      */
 	struct bsky_str bsky_str_null();
 
+	/**
+     * FN                           BSKY SB WRITE                            FN
+     *
+     * CULR write function for string builders.
+     */
+    size_t bsky_sb_write(char *ptr, size_t size, size_t nmemb,
+                         struct bsky_str_builder *sb);
+
+
 
 /*
  * ===========================================================================
@@ -547,7 +557,7 @@
      * View of http headers.
      *
      */
-    struct bksy_headers_view {
+    struct bsky_headers_view {
         struct bsky_str *start;
         struct bsky_str *end;
     };
@@ -562,9 +572,12 @@
      *    1. server url. (bsky_str)
      *    2. headers. (bsky_headers)
      *    3. request. (bsky_json)
+     *    4. http_code. (int*) -- http code of response.
+     *    5. error_code. (bsky_error_code) -- 
      */
     struct bsky_json bsky_http_request(struct bsky_str, struct bsky_view,
-                                       struct bsky_json);
+                                       struct bsky_json,
+                                       int*, enum bsky_error_code*);
 
 
 /*
@@ -589,7 +602,7 @@
     };
 
 	/**
-     * FN                        BKSY MK HANDLE                              FN
+     * FN                       BKSY MK HANDLE TMP                           FN
      *
      * Construct bsky identifier from handle str. This function do not fully
      * validate handle. So handle must be valid.
@@ -597,7 +610,7 @@
      * PARAMS:
      *    - handle -- Bsky handle. e.g. "username.server.exmpl".
      */
-    struct bsky_identifier bsky_mk_handle_tmp(const char *handle);
+    struct bsky_identifier bsky_mk_handle_tmp(char *handle);
 
 
 	/**
@@ -819,6 +832,24 @@
             return "JSON: expect ':' between key and value!";
         case bsky_ec_Json_invalid_variant:
             return "JSON: parse invalid json variant!";
+
+        case bsky_ec_Failed_to_init_curl: 
+            return "CURL: failed to init curl instance.";
+        case bsky_ec_Failed_to_perform_curl: 
+            return "CURL: failed to perform curl request.";
+
+        case bsky_ec_Invalid_id: 
+            return "API: Ivalid id";
+        case bsky_ec_Invalid_request: 
+            return "API: invalid request";
+        case bsky_ec_Expired_token: 
+            return "API: expired token";
+        case bsky_ec_Ivalid_token: 
+            return "API: ivalid token";
+        case bsky_ec_Account_takedown: 
+            return "API: account takedown";
+        case bsky_ec_Auth_factor_token_required: 
+            return "API: auth factor token required";
         }
     }
 
@@ -1076,7 +1107,7 @@
         if (!file) return bsky_str_null();
 
         size_t len = 0;
-        while ((len = fread(buffer, sizeof buffer, 1, fp)) > 0) {
+        while ((len = fread(buffer, sizeof buffer, 1, file)) > 0) {
             bsky_sb_push_str(&sb, (struct bsky_str) { buffer, buffer + len });
         }
 
@@ -1087,6 +1118,19 @@
 
     struct bsky_str bsky_str_null() {
         return (struct bsky_str) { NULL, NULL };
+    }
+
+    size_t bsky_sb_write(char *ptr, size_t size, size_t nmemb,
+                         struct bsky_str_builder *sb)
+    {
+        struct bsky_str str = (struct bsky_str) {
+            .start = ptr,
+            .end   = ptr + size * nmemb,
+        };
+
+        bsky_sb_push_str(sb, str);
+
+        return size * nmemb;
     }
 
     /*
@@ -1386,7 +1430,6 @@
 
         *ec = bsky_ec_Json_invalid_variant;
 
-    defer:
         return json;
     }
 
@@ -1395,40 +1438,45 @@
      */
     struct bsky_json bsky_http_request(struct bsky_str server,
                                        struct bsky_view _headers,
-                                       struct bsky_json request
-                                       enum bsky_error_code *ec)
+                                       struct bsky_json request,
+                                       int *code, enum bsky_error_code *ec)
     {
-        bsky_json res = { 0 };
-        bsky_str  req = { 0 };
-        bsky_str_builder sb = { 0 };
+        struct bsky_json res = { 0 };
+        struct bsky_str  req = { 0 };
+        struct bsky_str_builder sb = { 0 };
 
-        bsky_headers_view hds = { _headers.start, _headers.end };
+        struct bsky_headers_view headers = { _headers.start, _headers.end };
         req = bsky_tmp_str_of_json(request);
 
         *ec = bsky_ec_Ok;
 
-        curl_slist *headers_list = NULL;
+        struct curl_slist *headers_list = NULL;
         headers_list = curl_slist_append(headers_list,
                                     "Content-type: application/json");
 
         while (headers.end - headers.start > 0)
              headers_list = curl_slist_append(headers_list,
-                                              (headers.start++)->start);
+                                             (headers.start++)->start);
         
-	CURL *curl = curl_easy_init();
-	if (!curl) bsky_defer_ec(bsky_ec_Failed_init_curl);
+        CURL *curl = curl_easy_init();
+        if (!curl) bsky_defer_ec(bsky_ec_Failed_to_init_curl);
 
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, header_list);
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers_list);
         curl_easy_setopt(curl, CURLOPT_URL, server.start);
-        curl_easy_setopt(curl, CURLOPT_POSTDATA, req.start);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, req.start);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, bsky_sb_write);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &sb);
 
         CURLcode ret = curl_easy_perform(curl);
-        if (ret != 0) bsky_defer_ec(bsky_ec_Failed_perform_curl);
+        if (ret != 0) bsky_defer_ec(bsky_ec_Failed_to_perform_curl);
 
+        struct bsky_str res_str = bsky_sb_build_tmp(&sb);
+        res = bsky_parse_json(&res_str, ec);
+
+        if (*ec != bsky_ec_Ok) bsky_defer_ec(*ec);
 
     defer:
+        bsky_da_free(&sb);
         return res;
     }
 
@@ -1436,7 +1484,7 @@
     /*
      * BSKY API TYPES
      */
-    struct bsky_identifier bsky_mk_handle_tmp(const char *_handle) {
+    struct bsky_identifier bsky_mk_handle_tmp(char *_handle) {
         struct bsky_str_builder     sb = { 0 };
         struct bsky_identifier      id = { 0 };
         struct bsky_str         handle = { 0 };
@@ -1453,10 +1501,10 @@
             return id;
         }
 
-        bsky_sb_push_str((struct bsky_str) { _handle, handle.start });
+        bsky_sb_push_str(&sb, (struct bsky_str) { _handle, handle.start });
         id.handle.username = bsky_sb_build_tmp(&sb);
 
-        bsky_sb_push_str((struct bsky_str) { handle.start+1, handle.end });
+        bsky_sb_push_str(&sb,(struct bsky_str) { handle.start+1, handle.end });
         id.handle.server   = bsky_sb_build_tmp(&sb);
 
         return id;
@@ -1473,7 +1521,6 @@
     {
         struct bsky_crses_resp  res = { 0 };
 
-    defer:
         return res;
     }
 
