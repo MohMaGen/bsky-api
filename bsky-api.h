@@ -565,8 +565,11 @@
      *
      * FN                         BSKY HTTP REQUST                           FN
      *
-     * Do a http/https requst to the server with provided headers and request
-     * data.
+     * Do a http/https post requst to the server with provided headers and
+     * json request data.
+     *
+     * This request have `Content-type: application/json' header additional to
+     * the headers list.
      *
      * ARGS:
      *    1. server url. (bsky_str)
@@ -579,7 +582,14 @@
                                        struct bsky_json,
                                        int*, enum bsky_error_code*);
 
+    struct bsky_http_request_future {
 
+    };
+
+    struct bsky_http_request_future
+    bsky_http_request_async(struct bsky_str, struct bsky_view,
+                                       struct bsky_json,
+                                       int*, enum bsky_error_code*);
 /*
  * ============================================================================
  *                                   API TYPES
