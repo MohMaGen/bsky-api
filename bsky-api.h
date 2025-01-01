@@ -103,9 +103,9 @@
      * Log formatted message using BSKY_LOGGER, unless level lesser than
      * `BSKY_LOG_LEVELE'
      */
-    #define bsky_log(level, fmt, ...) if (level <= BSKY_LOG_LEVEL) {\
+    #define bsky_log(level, fmt, ...) do { if (level <= BSKY_LOG_LEVEL)     \
             BSKY_LOGGER(level, fmt, __VA_ARGS__);                           \
-        }                                                                   \
+        } while(0)                                                          \
 
 /*
  * module
@@ -131,7 +131,11 @@
         bsky_ec_Json_invalid_variant,
 
         bsky_ec_Failed_to_init_curl,
-		bsky_ec_Failed_to_perform_curl,
+        bsky_ec_Failed_to_perform_curl,
+        bsky_ec_Failed_to_init_curlm,
+        bsky_ec_Failed_to_perform_curlm,
+        bsky_ec_Failed_to_poll_curlm,
+        bsky_ec_Failed_to_get_response_code,
         bsky_ec_Invalid_id,
 
         bsky_ec_Invalid_request,
@@ -534,6 +538,71 @@
     struct bsky_json_da      { struct bsky_json      *data; size_t len, cap; };
     struct bsky_json_pair_da { struct bsky_json_pair *data; size_t len, cap; };
 
+/**
+ * ============================================================================
+ *                                  FUTURES
+ * ============================================================================
+ */
+    struct bsky_future;
+    typedef int (*bsky_poll_fn)(void * /*self data*/,
+                                void * /*data*/, void * /*result*/,
+                                enum bsky_error_code * /*ec*/);
+
+    /**
+     * STRUCT                     BSKY FUTURE                            STRUCT
+     *
+     * Interface representing furure handler for async programming. "Future" in
+     * `rust' meaning.
+     * 
+     */
+    struct bsky_future {
+        void *self;
+        bsky_poll_fn poll;
+    };
+
+    #define bksy_mk_future(self, poll_fn) \
+                          (struct bsky_future) { self, poll_fn }
+
+
+    /**
+     * FN                       BSKY FUTURE POLL                             FN
+     *
+     * Wrapper to call `poll' of `struct bsky_future'.
+     *
+     * RETURNS:
+     *    - 0:   the future is still running.
+     *    - > 0: the future've finished successfully. (in that case `ec' will
+     *           always equal to `bsky_ec_Ok').
+     *    - < 0: the future've finished with error.
+     * 
+     * ARGS:
+     *    1. self   -- the future.
+     *    2. data   -- additional data to poll. (may be deltatime or result of
+     *                previous chained future for example.)
+     *    3. result -- pointer to resulting data.
+     *    4. ec     -- information about error.
+     * 
+     * EXAMPLE:
+     *
+     *    enum bsky_error_code ec;
+     *    struct bsky_http_response res = { 0 };
+     *    struct bsky_future req = bsky_http_request_async(...some args);
+     *
+     *    while (bsky_future_poll(req, NULL, &res, &ec) == 0) {
+     *        bsky_log(bsky_log_Info, "getting response...");
+     *    }
+     *
+     *    if (ec == bsky_ec_Ok)
+     *        bsky_log(bsky_log_Info, "Ok: `%s'", bsky_tmp_str_of_json(res));
+     *    else
+     *        bsky_log_error(ec);
+     * 
+     */
+    int bsky_fufure_poll(struct bsky_future self, void *data, void *result,
+                         enum bsky_error_code *ec);
+
+
+
 
 /**
  * ============================================================================
@@ -561,6 +630,18 @@
         struct bsky_str *start;
         struct bsky_str *end;
     };
+
+	/**
+     * STRUCT                      BSKY HTTP RESPONSE                    STRUCT
+     *
+     * The `struct bsky_http_response' contains resulting data of http request.
+     * 
+     */
+    struct bsky_http_response {
+        struct bsky_json json;
+        long             code;
+    };
+
     /**
      *
      * FN                         BSKY HTTP REQUST                           FN
@@ -575,21 +656,29 @@
      *    1. server url. (bsky_str)
      *    2. headers. (bsky_headers)
      *    3. request. (bsky_json)
-     *    4. http_code. (int*) -- http code of response.
      *    5. error_code. (bsky_error_code) -- 
      */
-    struct bsky_json bsky_http_request(struct bsky_str, struct bsky_view,
-                                       struct bsky_json,
-                                       int*, enum bsky_error_code*);
+    struct bsky_http_response bsky_http_request(struct bsky_str,
+                                                struct bsky_view,
+                                                struct bsky_json,
+                                                enum bsky_error_code*);
 
-    struct bsky_http_request_future {
 
-    };
-
-    struct bsky_http_request_future
-    bsky_http_request_async(struct bsky_str, struct bsky_view,
-                                       struct bsky_json,
-                                       int*, enum bsky_error_code*);
+    /**
+     *
+     * FN                       BSKY HTTP REQUST ASYNC                       FN
+     *
+     * Async version of `bsky_http_request'.
+     *
+     * NOTE:
+     *    when poll resulting future, the data will be pointer to long or NULL.
+     *    if `data' is NULL, then will not wait on every poll, otherwise will
+     *    `data' milliseconds on every poll.
+     */
+    struct bsky_future bsky_http_request_async(struct bsky_str,
+                                               struct bsky_view,
+                                               struct bsky_json,
+                                               enum bsky_error_code*);
 /*
  * ============================================================================
  *                                   API TYPES
@@ -844,9 +933,17 @@
             return "JSON: parse invalid json variant!";
 
         case bsky_ec_Failed_to_init_curl: 
-            return "CURL: failed to init curl instance.";
+            return "CURL: failed to init curl easy instance.";
         case bsky_ec_Failed_to_perform_curl: 
-            return "CURL: failed to perform curl request.";
+            return "CURL: failed to perform curl easy request.";
+        case bsky_ec_Failed_to_init_curlm: 
+            return "CURL: failed to init curl multi instance.";
+        case bsky_ec_Failed_to_poll_curlm:
+            return "CURL: failed to poll curl multi instance.";
+        case bsky_ec_Failed_to_perform_curlm: 
+            return "CURL: failed to perform curl multi request.";
+        case bsky_ec_Failed_to_get_response_code:
+            return "CURL: failed to get response code.";
 
         case bsky_ec_Invalid_id: 
             return "API: Ivalid id";
@@ -1444,16 +1541,25 @@
     }
 
     /*
+     * BSKY FUTURE
+     */
+    int bsky_fufure_poll(struct bsky_future self, void *data, void *result,
+                         enum bsky_error_code *ec)
+    {
+        return self.poll(self.self, data, result, ec);
+    }
+
+    /*
      * BSKY CURL
      */
-    struct bsky_json bsky_http_request(struct bsky_str server,
-                                       struct bsky_view _headers,
-                                       struct bsky_json request,
-                                       int *code, enum bsky_error_code *ec)
+    struct bsky_http_response bsky_http_request(struct bsky_str server,
+                                                struct bsky_view _headers,
+                                                struct bsky_json request,
+                                                enum bsky_error_code *ec)
     {
-        struct bsky_json res = { 0 };
-        struct bsky_str  req = { 0 };
-        struct bsky_str_builder sb = { 0 };
+        struct bsky_http_response res = { 0 };
+        struct bsky_str  req          = { 0 };
+        struct bsky_str_builder sb    = { 0 };
 
         struct bsky_headers_view headers = { _headers.start, _headers.end };
         req = bsky_tmp_str_of_json(request);
@@ -1481,12 +1587,139 @@
         if (ret != 0) bsky_defer_ec(bsky_ec_Failed_to_perform_curl);
 
         struct bsky_str res_str = bsky_sb_build_tmp(&sb);
-        res = bsky_parse_json(&res_str, ec);
+        res.json = bsky_parse_json(&res_str, ec);
 
         if (*ec != bsky_ec_Ok) bsky_defer_ec(*ec);
 
+        curl_easy_cleanup(curl);
+
+        ret = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &res.code);
+        if (ret != 0) bsky_defer_ec(bsky_ec_Failed_to_get_response_code);
+
     defer:
         bsky_da_free(&sb);
+        return res;
+    }
+
+    struct __bsky_http_request_state {
+        CURLM *multi; CURL *curl;
+        struct bsky_str_builder sb;
+        enum {
+            __bsky_http_request_SEND,
+            __bsky_http_request_RETURN,
+        } state;
+    };
+
+    int __bsky_http_request_poll(void *_self, void *data, void *result,
+                                 enum bsky_error_code* ec)
+    {
+        struct __bsky_http_request_state *self = _self;
+        int ret = 0;
+
+        switch (self->state) {
+        case __bsky_http_request_SEND: {
+            int still_running = 0;
+            CURLMcode mc;
+
+            mc = curl_multi_perform(self->multi, &still_running);
+            if (mc) {
+                ret = -1;
+                bsky_defer_ec(bsky_ec_Failed_to_perform_curlm);
+            }
+
+            if (!still_running) self->state = __bsky_http_request_RETURN;
+
+            if (data != NULL) {
+                size_t ms = *(size_t*)data;
+                mc = curl_multi_poll(self->multi, NULL, 0, ms, NULL);
+                if (mc) {
+                    ret = -1;
+                    bsky_defer_ec(bsky_ec_Failed_to_poll_curlm);
+                }
+			}
+
+            return 0; /* do not return with defer, cause don't wanna free
+                         curl. */
+        } break;
+        case __bsky_http_request_RETURN: {
+            struct bsky_http_response *res = result;
+            struct bsky_str            str = bsky_sb_build_tmp(&self->sb);
+
+            res->json = bsky_parse_json(&str, ec);
+            if (*ec != bsky_ec_Ok) {
+                ret = -1;
+                bsky_defer_ec(*ec);
+            }
+
+            ret = curl_easy_getinfo(self->curl, CURLINFO_RESPONSE_CODE, 
+                                    &res->code);
+            if (ret != 0) {
+                ret = -1;
+                bsky_defer_ec(bsky_ec_Failed_to_get_response_code);
+            }
+
+            ret = 1;
+        } break;
+        }
+
+    defer:
+        curl_multi_remove_handle(self->multi, self->curl);
+        curl_easy_cleanup(self->curl);
+        curl_multi_cleanup(self->multi);
+
+        return ret;
+    }
+
+    struct bsky_future bsky_http_request_async(struct bsky_str server,
+                                               struct bsky_view _headers,
+                                               struct bsky_json request,
+                                               enum bsky_error_code* ec)
+    {
+        *ec = bsky_ec_Ok;
+
+        struct bsky_future res = { 0 };
+
+        struct __bsky_http_request_state *self = 
+               bsky_tmp_alloc(sizeof(struct __bsky_http_request_state));
+
+        *self = (struct __bsky_http_request_state) { 0 };
+        self->state = __bsky_http_request_SEND;
+
+        self->curl = curl_easy_init();
+        if (!self->curl) bsky_defer_ec(bsky_ec_Failed_to_init_curl);
+
+        self->multi = curl_multi_init();
+        if (!self->multi) {
+            curl_easy_cleanup(self->curl);
+            bsky_defer_ec(bsky_ec_Failed_to_init_curlm);
+        }
+        curl_multi_add_handle(self->multi, self->curl);
+
+        struct bsky_str req = { 0 };
+
+        struct bsky_headers_view headers = { _headers.start, _headers.end };
+        req = bsky_tmp_str_of_json(request);
+
+        struct curl_slist *headers_list = NULL;
+        headers_list = curl_slist_append(headers_list,
+                                    "Content-type: application/json");
+
+        while (headers.end - headers.start > 0)
+             headers_list = curl_slist_append(headers_list,
+                                             (headers.start++)->start);        
+
+        curl_easy_setopt(self->curl, CURLOPT_HTTPHEADER, headers_list);
+        curl_easy_setopt(self->curl, CURLOPT_URL, server.start);
+        curl_easy_setopt(self->curl, CURLOPT_POSTFIELDS, req.start);
+        curl_easy_setopt(self->curl, CURLOPT_WRITEFUNCTION, bsky_sb_write);
+        curl_easy_setopt(self->curl, CURLOPT_WRITEDATA, &self->sb);
+
+        res = (struct bsky_future) {
+            .self = self,
+            .poll = &__bsky_http_request_poll,
+        };
+
+    defer:
         return res;
     }
 
