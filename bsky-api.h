@@ -40,6 +40,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <curl/curl.h>
+#include <string.h>
 
 #define BSKY_ARRAY_LEN(array) (sizeof (array) / sizeof (array)[0])
 
@@ -164,9 +165,9 @@
                         return (ret)                           \
                     } while(0)                                 \
 
-	#define bsky_defer_ec(ec_v) do {                           \
+	#define bsky_defer_ec(ec_v) do {                       \
                         *ec = ec_v;                            \
-	                    goto defer;                            \
+	                    goto defer;                        \
                     } while(0)                                 \
 
 
@@ -763,7 +764,8 @@
         bsky_session_status_Deactivated,
     };
 
-	/**
+
+    /**
      * STRUCT                       BSKY SESSION EMAIL                   STRUCT
      *
      * Structure representing email of the session.
@@ -838,6 +840,7 @@
         struct bsky_str refreshJwt;
     };
 
+
     /**
      * FN                        BSKY CREATE SESSION                         FN
      * 
@@ -863,11 +866,11 @@
      *                   - `bsky_ec_Ivalid_token'
      *                   - `bsky_ec_Account_takedown'
      *                   - `bsky_ec_Auth_factor_token_required'
-     * 
+     *
      *               - `bsky_ec_Failed_to_init_curl' -- in case curl init
      *                                               will failed.
      *               - `bsky_ec_Invalid_id' -- provided identifier is invalid.
-     * 
+     *
      * SEE ALSO:
      *    - bsky api documentation for `com.atproto.server.createSession':
      * `https://docs.bsky.app/docs/api/com-atproto-server-create-session'
@@ -993,7 +996,6 @@
     /*
      * BKSY DYNAMIC ARRAY
      */
-	#include <string.h>
     void bsky_da_free(void *da) {
         struct bsky_dynamic_arr *self = (struct bsky_dynamic_arr*) da;
 
